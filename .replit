@@ -1,0 +1,18 @@
+run = "npm run dev"
+entrypoint = "src/main.tsx"
+
+[packager]
+language = "nodejs"
+
+[packager.features]
+enableGuessImports = true
+
+[env]
+NODE_ENV = "development"
+VITE_API_URL = "http://localhost:5000"
+
+[nix]
+channels = ["stable-22.11"]
+
+[[nix.nixpkgs.nodejs]]
+version = "18.16.1"
