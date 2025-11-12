@@ -26,6 +26,7 @@ input[type="password"]:focus,input[type="text"]:focus,textarea:focus{outline:non
 .btn:active{transform:translateY(0)}
 .btn:disabled{opacity:0.6;cursor:not-allowed;transform:none}
 .btn-back{background:#6c757d;margin-top:10px}
+.btn-secondary{background:#6c757d;width:auto;padding:8px 16px;font-size:14px;margin-bottom:10px;display:inline-block}
 .btn-back:hover{box-shadow:0 5px 20px rgba(108,117,125,0.4)}
 .loading{display:none;text-align:center;color:#667eea;font-weight:500}
 .error{color:#dc3545;font-size:12px;margin-top:5px}
@@ -48,6 +49,12 @@ input[type="password"]:focus,input[type="text"]:focus,textarea:focus{outline:non
 .hidden{display:none!important}
 .selected-info{color:#28a745;font-size:14px;margin-bottom:10px}
 .server-header{background:#f8f9fa;padding:12px;border-radius:6px;margin-bottom:20px;text-align:center;color:#333;font-weight:500}
+.emoji-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;padding:10px;background:#f0f0f0;border-radius:6px}
+.emoji-count{font-size:14px;font-weight:600;color:#333}
+.download-link{color:#667eea;text-decoration:none;font-weight:600}
+.download-item{display:flex;align-items:center;padding:10px;margin-bottom:10px;background:#f8f9fa;border-radius:6px;justify-content:space-between}
+.download-progress{background:#e9ecef;border-radius:4px;height:20px;margin-bottom:10px;overflow:hidden}
+.download-progress-bar{background:linear-gradient(90deg,#667eea,#764ba2);height:100%;width:0%;transition:width 0.3s}
 </style>
 </head>
 <body>
@@ -77,27 +84,45 @@ input[type="password"]:focus,input[type="text"]:focus,textarea:focus{outline:non
 <div class="step-title">Paso 3: Selecciona Emojis</div>
 <div class="step-description">Elige los emojis que deseas descargar</div>
 <div class="server-header" id="server-info">Servidor: -</div>
+<div class="emoji-header"><span class="emoji-count" id="total-emojis">Total de emojis: 0</span><button class="btn-secondary" onclick="selectAllEmojis()">Seleccionar todos</button></div>
 <div class="form-group"><label>Tus Emojis</label><div class="selected-info" id="emoji-count">Selecciona emojis</div><div class="emojis-grid" id="emojis-grid"></div></div>
-<button class="btn" onclick="downloadEmojis()">Descargar</button>
+<button class="btn" onclick="proceedToDownload()">Continuar</button>
 <button class="btn btn-back" onclick="backToServers()">Atras</button>
 <div class="loading" id="loading-emojis">Cargando emojis...</div>
 <div class="error" id="error-emojis"></div>
 </div>
+<div id="step-download" class="step-content hidden">
+<div class="header"><div class="logo">🎭</div><div class="header-text"><h1>Discord Emoji Downloader</h1><p>Descarga emojis & stickers de tus servidores</p></div></div>
+<div class="step-title">Paso 4: Descarga</div>
+<div class="step-description">Descargando tus emojis seleccionados</div>
+<div class="server-header" id="server-info-download">Servidor: -</div>
+<div id="download-list"></div>
+<div class="download-progress"><div class="download-progress-bar" id="progress-bar"></div></div>
+<p id="progress-text" style="text-align:center;color:#666;margin-bottom:20px">Preparando descarga...</p>
+<button class="btn" onclick="downloadAsZip()" id="download-btn" style="display:none">Descargar ZIP</button>
+<button class="btn btn-back" onclick="backToEmojis()">Atras</button>
+<div class="loading" id="loading-download">Procesando emojis...</div>
+<div class="error" id="error-download"></div>
+</div>
 </div>
 <script>
-let currentToken='';let selectedServer=null;let selectedEmojis=new Set();
-async function validateAndContinue(){const token=document.getElementById('token').value.trim();const errorDiv=document.getElementById('error');const loading=document.getElementById('loading');const btn=event.target;errorDiv.textContent='';if(!token){errorDiv.textContent='Por favor ingresa tu token de Discord';return}if(token.length<50){errorDiv.textContent='El token parece ser invalido (muy corto)';return}currentToken=token;loading.style.display='block';btn.disabled=true;try{const response=await fetch('https://discord.com/api/v10/users/@me',{headers:{'Authorization':token,'Content-Type':'application/json'}});if(!response.ok){throw new Error('Token invalido')}const userData=await response.json();sessionStorage.setItem('discord_token',token);loadServers()}catch(error){errorDiv.textContent='Token invalido o error de conexion';loading.style.display='none';btn.disabled=false}}
+let currentToken='';let selectedServer=null;let selectedEmojis=new Set();let allEmojis=[];
+async function validateAndContinue(){const token=document.getElementById('token').value.trim();const errorDiv=document.getElementById('error');const loading=document.getElementById('loading');const btn=event.target;errorDiv.textContent='';if(!token){errorDiv.textContent='Por favor ingresa tu token de Discord';return}if(token.length<50){errorDiv.textContent='El token parece ser invalido (muy corto)';return}currentToken=token;loading.style.display='block';btn.disabled=true;try{const response=await fetch('https://discord.com/api/v10/users/@me',{headers:{'Authorization':token,'Content-Type':'application/json'}});if(!response.ok){throw new Error('Token invalido')}await response.json();sessionStorage.setItem('discord_token',token);loadServers()}catch(error){errorDiv.textContent='Token invalido o error de conexion';loading.style.display='none';btn.disabled=false}}
 async function loadServers(){document.getElementById('step-token').classList.add('hidden');document.getElementById('step-servers').classList.remove('hidden');const loading=document.getElementById('loading-servers');loading.style.display='block';const errorDiv=document.getElementById('error-servers');errorDiv.textContent='';try{const response=await fetch('https://discord.com/api/v10/users/@me/guilds',{headers:{'Authorization':currentToken,'Content-Type':'application/json'}});if(!response.ok){throw new Error('Error al obtener servidores')}const guilds=await response.json();if(guilds.length===0){errorDiv.textContent='No tienes ningun servidor'}loading.style.display='none';displayServers(guilds)}catch(error){errorDiv.textContent='Error al cargar tus servidores: '+error.message;loading.style.display='none'}}
 function displayServers(servers){const serversList=document.getElementById('servers-list');serversList.innerHTML='';servers.forEach(server=>{const div=document.createElement('div');div.className='server-item';const iconUrl=server.icon?`https://cdn.discordapp.com/icons/${server.id}/${server.icon}.png`:null;const iconHtml=iconUrl?`<img src="${iconUrl}" style="width: 40px; height: 40px; border-radius: 50%; margin-right: 12px;" alt="${server.name}">`:`<div class="server-icon">${server.name.charAt(0).toUpperCase()}</div>`;div.innerHTML=`<input type="radio" name="server" id="server-${server.id}" value="${server.id}" onchange="updateSelection('${server.id}', '${server.name}')"> ${iconHtml}<div class="server-info"><div class="server-name">${server.name}</div><div class="server-id">ID: ${server.id}</div></div>`;serversList.appendChild(div)})}
 function updateSelection(serverId,serverName){selectedServer={id:serverId,name:serverName};const hint=document.getElementById('selected-count');hint.textContent=`Servidor seleccionado: ${serverName}`;hint.style.color='#28a745'}
 function proceedToEmojis(){if(!selectedServer){document.getElementById('error-servers').textContent='Debes seleccionar un servidor';return}sessionStorage.setItem('selected_server',JSON.stringify(selectedServer));document.getElementById('step-servers').classList.add('hidden');document.getElementById('step-emojis').classList.remove('hidden');document.getElementById('server-info').textContent=`Servidor: ${selectedServer.name}`;loadEmojis()}
-async function loadEmojis(){const loading=document.getElementById('loading-emojis');loading.style.display='block';const errorDiv=document.getElementById('error-emojis');errorDiv.textContent='';try{const response=await fetch(`https://discord.com/api/v10/guilds/${selectedServer.id}`,{headers:{'Authorization':currentToken,'Content-Type':'application/json'}});if(!response.ok){throw new Error('Error al obtener emojis')}const guildData=await response.json();if(!guildData.emojis||guildData.emojis.length===0){errorDiv.textContent='Este servidor no tiene emojis personalizados'}loading.style.display='none';displayEmojis(guildData.emojis||[])}catch(error){errorDiv.textContent='Error al cargar emojis: '+error.message;loading.style.display='none'}}
+async function loadEmojis(){const loading=document.getElementById('loading-emojis');loading.style.display='block';const errorDiv=document.getElementById('error-emojis');errorDiv.textContent='';try{const response=await fetch(`https://discord.com/api/v10/guilds/${selectedServer.id}`,{headers:{'Authorization':currentToken,'Content-Type':'application/json'}});if(!response.ok){throw new Error('Error al obtener emojis')}const guildData=await response.json();allEmojis=guildData.emojis||[];document.getElementById('total-emojis').textContent=`Total de emojis: ${allEmojis.length}`;if(allEmojis.length===0){errorDiv.textContent='Este servidor no tiene emojis personalizados'}loading.style.display='none';displayEmojis(allEmojis)}catch(error){errorDiv.textContent='Error al cargar emojis: '+error.message;loading.style.display='none'}}
 function displayEmojis(emojis){selectedEmojis.clear();const grid=document.getElementById('emojis-grid');grid.innerHTML='';emojis.forEach(emoji=>{const div=document.createElement('div');div.className='emoji-item';const emojiUrl=`https://cdn.discordapp.com/emojis/${emoji.id}.png`;div.innerHTML=`<input type="checkbox" id="emoji-${emoji.id}" value="${emoji.id}" onchange="updateEmojiSelection(this)"><img src="${emojiUrl}" class="emoji-image" alt="${emoji.name}"><div class="emoji-name">${emoji.name}</div>`;grid.appendChild(div)});updateEmojiCount()}
 function updateEmojiSelection(checkbox){const itemDiv=checkbox.closest('.emoji-item');if(checkbox.checked){selectedEmojis.add(checkbox.value);itemDiv.classList.add('selected')}else{selectedEmojis.delete(checkbox.value);itemDiv.classList.remove('selected')}updateEmojiCount()}
 function updateEmojiCount(){const count=document.getElementById('emoji-count');if(selectedEmojis.size===0){count.textContent='Selecciona emojis'}else{count.textContent=`${selectedEmojis.size} emoji(s) seleccionado(s)`}}
-function downloadEmojis(){if(selectedEmojis.size===0){alert('Por favor selecciona al menos un emoji');return}alert(`Descargando ${selectedEmojis.size} emojis de ${selectedServer.name}...\n\n(Funcionalidad en desarrollo)`)}
-function goBack(){currentToken='';selectedServer=null;selectedEmojis.clear();document.getElementById('step-token').classList.remove('hidden');document.getElementById('step-servers').classList.add('hidden');document.getElementById('step-emojis').classList.add('hidden');document.getElementById('token').value='';document.getElementById('loading').style.display='none';document.getElementById('error').textContent='';document.getElementById('token').focus()}
-function backToServers(){selectedEmojis.clear();document.getElementById('step-servers').classList.remove('hidden');document.getElementById('step-emojis').classList.add('hidden')}
+function selectAllEmojis(){const checkboxes=document.querySelectorAll('#emojis-grid input[type="checkbox"]');checkboxes.forEach(cb=>{cb.checked=true;updateEmojiSelection(cb)})}  
+function proceedToDownload(){if(selectedEmojis.size===0){alert('Debes seleccionar al menos un emoji');return}document.getElementById('step-emojis').classList.add('hidden');document.getElementById('step-download').classList.remove('hidden');document.getElementById('server-info-download').textContent=`Servidor: ${selectedServer.name}`;prepareDownloadList()}
+function prepareDownloadList(){const list=document.getElementById('download-list');list.innerHTML='';const selectedEmojiNames=[];allEmojis.forEach(emoji=>{if(selectedEmojis.has(emoji.id)){selectedEmojiNames.push(emoji.name);const div=document.createElement('div');div.className='download-item';const emojiUrl=`https://cdn.discordapp.com/emojis/${emoji.id}.png`;div.innerHTML=`<span>${emoji.name}</span><img src="${emojiUrl}" class="emoji-image" alt="${emoji.name}" style="width:30px;height:30px">`;list.appendChild(div)}});setTimeout(()=>{document.getElementById('loading-download').style.display='none';document.getElementById('download-btn').style.display='block';document.getElementById('progress-text').textContent=`${selectedEmojis.size} emoji(s) listo(s) para descargar`;const progressBar=document.getElementById('progress-bar');progressBar.style.width='100%'},1500)}
+function downloadAsZip(){alert(`Descargando ${selectedEmojis.size} emojis de ${selectedServer.name}...\n\n(Funcionalidad: En desarrollo - Los emojis se guardaran en un ZIP)`)}
+function goBack(){currentToken='';selectedServer=null;selectedEmojis.clear();document.getElementById('step-token').classList.remove('hidden');document.getElementById('step-servers').classList.add('hidden');document.getElementById('step-emojis').classList.add('hidden');document.getElementById('step-download').classList.add('hidden');document.getElementById('token').value='';document.getElementById('loading').style.display='none';document.getElementById('error').textContent='';document.getElementById('token').focus()}
+function backToServers(){selectedEmojis.clear();document.getElementById('step-emojis').classList.add('hidden');document.getElementById('step-servers').classList.remove('hidden')}
+function backToEmojis(){document.getElementById('step-download').classList.add('hidden');document.getElementById('step-emojis').classList.remove('hidden')}
 document.getElementById('token').addEventListener('keypress',function(e){if(e.key==='Enter'){validateAndContinue()}})
 </script>
 </body>
